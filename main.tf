@@ -40,10 +40,18 @@ resource "aws_security_group" "elb" {
   name        = "ruuvi_elb_secgroup"
   vpc_id      = "${aws_vpc.ruuvi_vpc.id}"
 
-  # HTTP access from anywhere
+  # HTTP access to Grafana
   ingress {
-    from_port   = 80
-    to_port     = 80
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # HTTP access to Influxdb
+  ingress {
+    from_port   = 8086
+    to_port     = 8086
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -68,27 +76,47 @@ resource "aws_security_group" "default" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["0.0.0.0/0", "10.0.0.0/16"]
   }
 
   # HTTP access from the VPC
-  # ingress {
-  #   from_port   = 80
-  #   to_port     = 80
-  #   protocol    = "tcp"
-  #   cidr_blocks = ["10.0.0.0/16"]
-  # }
+  ingress {
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  ingress {
+    from_port   = 8086
+    to_port     = 8086
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
 
   # outbound internet access
-  # egress {
-  #   from_port   = 0
-  #   to_port     = 0
-  #   protocol    = "-1"
-  #   cidr_blocks = ["0.0.0.0/0"]
-  # }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
-resource "aws_elb" "web" {
+resource "aws_acm_certificate" "ruuvi_cert" {
+  domain_name       = "*.fredde.dev"
+  validation_method = "DNS"
+
+  tags = {
+    Name = "${var.project_name}"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_elb" "ruuvi_elb" {
   name = "ruuvi-elb"
 
   subnets         = ["${aws_subnet.ruuvi_subnet.id}"]
@@ -96,16 +124,40 @@ resource "aws_elb" "web" {
   instances       = ["${aws_instance.ruuvi_instance.id}"]
 
   listener {
-    instance_port     = 80
+    instance_port      = 22
+    instance_protocol  = "tcp"
+    lb_port            = 22
+    lb_protocol        = "tcp"
+  }
+
+  listener {
+    instance_port      = 3000
+    instance_protocol  = "http"
+    lb_port            = 443
+    lb_protocol        = "https"
+    ssl_certificate_id = "${aws_acm_certificate.ruuvi_cert.id}"
+  }
+
+  listener {
+    instance_port     = 8086
     instance_protocol = "http"
-    lb_port           = 80
-    lb_protocol       = "http"
+    lb_port           = 8086
+    lb_protocol       = "https"
+    ssl_certificate_id = "${aws_acm_certificate.ruuvi_cert.id}"
+  }
+
+  health_check {
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 3
+    target              = "HTTP:8086/ping?verbose=true"
+    interval            = 30
   }
 }
 
 resource "aws_key_pair" "bostrom" {
   key_name   = "bostrom-key-pair-euwest1"
-  public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCYAjAwB++tzKXTcfxoYuyIbG5gTrmJQbQ1pUCcTksgqXHiK9wiI6pkEeT2dkgVe7NRgKIlHk0epgN5hNm76KFWglt5ST1O2BzwG0GQnwQ2R+TSlfxuJNN+AjTTN2L2duuA1ODSB7/5aHen0AIOJbfP5lVfrKA11DuLPDYBLa/i68UDZ4Zu9sgp/mG7EJq8YKFPfB4pWkSSvyJumTNW2Atjd5F/7P0vnU6M8qgCabZqb7VI7c7YhUl5fXj5/dDmznYHiqJ3xYtNW0IclvnStQpTuX6hLzZ4J8Y7xJfQz/FJBuoXzyc1xBUojXWx41w2C8fRTiFpk3WX1999JUWZ9owf"
+  public_key = "${file(var.public_key_path)}"
 }
 
 resource "aws_instance" "ruuvi_instance" {
@@ -128,5 +180,30 @@ resource "aws_instance" "ruuvi_instance" {
 
   tags = {
     Name = "${var.project_name}"
+  }
+
+  # We run a remote provisioner on the instance after creating it.
+  provisioner "file" {
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = "${file(var.private_key_path)}"
+    }
+
+    source      = "provisioning/install-influxdb.sh"
+    destination = "/tmp/install-influxdb.sh"
+  }
+
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = "${file(var.private_key_path)}"
+    }
+
+    inline = [
+      "chmod +x /tmp/install-influxdb.sh",
+      "/tmp/install-influxdb.sh ${var.influx_admin_pw} ${var.influx_user_pw} ${var.grafana_admin_pw}",
+    ]
   }
 }
