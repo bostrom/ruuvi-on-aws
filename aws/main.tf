@@ -3,6 +3,7 @@ provider "aws" {
   version    = "~> 2.8"
 }
 
+# Create a VPC for these services
 resource "aws_vpc" "ruuvi_vpc" {
   cidr_block = "10.0.0.0/16"
 
@@ -11,6 +12,7 @@ resource "aws_vpc" "ruuvi_vpc" {
   }
 }
 
+# Create an internet gateway so we can connect from the outside
 resource "aws_internet_gateway" "ruuvi_gw" {
   vpc_id = "${aws_vpc.ruuvi_vpc.id}"
 
@@ -25,6 +27,7 @@ resource "aws_route" "ruuvi_internet_access" {
   gateway_id             = "${aws_internet_gateway.ruuvi_gw.id}"
 }
 
+# Put services in their own subnet
 resource "aws_subnet" "ruuvi_subnet" {
   vpc_id            = "${aws_vpc.ruuvi_vpc.id}"
   cidr_block        = "10.0.1.0/24"
@@ -36,6 +39,47 @@ resource "aws_subnet" "ruuvi_subnet" {
   }
 }
 
+# Security group for the EC2 instance. Only allows
+# access from the ELB, except for SSH, which can be
+# accessed using the instance IP directly
+resource "aws_security_group" "default" {
+  name        = "ruuvi_default_secgroup"
+  vpc_id      = "${aws_vpc.ruuvi_vpc.id}"
+
+  # SSH access from anywhere
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0", "10.0.0.0/16"]
+  }
+
+  # Grafana
+  ingress {
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  # InfluxDb
+  ingress {
+    from_port   = 8086
+    to_port     = 8086
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  # Outbound internet access
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Security group for the ELB
 resource "aws_security_group" "elb" {
   name        = "ruuvi_elb_secgroup"
   vpc_id      = "${aws_vpc.ruuvi_vpc.id}"
@@ -65,46 +109,9 @@ resource "aws_security_group" "elb" {
   }
 }
 
-# Our default security group to access
-# the instances over SSH and HTTP
-resource "aws_security_group" "default" {
-  name        = "ruuvi_default_secgroup"
-  vpc_id      = "${aws_vpc.ruuvi_vpc.id}"
-
-  # SSH access from anywhere
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0", "10.0.0.0/16"]
-  }
-
-  # HTTP access from the VPC
-  ingress {
-    from_port   = 3000
-    to_port     = 3000
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-  }
-
-  ingress {
-    from_port   = 8086
-    to_port     = 8086
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-  }
-
-  # outbound internet access
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
+# Generate an SSL cert
 resource "aws_acm_certificate" "ruuvi_cert" {
-  domain_name       = "*.fredde.dev"
+  domain_name       = "${var.ssl_domain}"
   validation_method = "DNS"
 
   tags = {
@@ -116,6 +123,8 @@ resource "aws_acm_certificate" "ruuvi_cert" {
   }
 }
 
+# ELB that forwards requests to the EC2 instance and provides
+# SSL connections
 resource "aws_elb" "ruuvi_elb" {
   name = "ruuvi-elb"
 
@@ -155,16 +164,33 @@ resource "aws_elb" "ruuvi_elb" {
   }
 }
 
-resource "aws_key_pair" "bostrom" {
-  key_name   = "bostrom-key-pair-euwest1"
+resource "aws_ebs_volume" "ruuvi_volume" {
+  availability_zone = "eu-central-1a"
+  size              = 30
+
+  tags = {
+    Name = "${var.project_name}"
+  }
+}
+
+resource "aws_volume_attachment" "ruuvi_vol_att" {
+  device_name  = "/dev/sdh"
+  volume_id    = "${aws_ebs_volume.ruuvi_volume.id}"
+  instance_id  = "${aws_instance.ruuvi_instance.id}"
+  skip_destroy = true
+}
+
+resource "aws_key_pair" "ruuvi_access_key" {
+  key_name   = "${var.key_pair_name}"
   public_key = "${file(var.public_key_path)}"
 }
 
+# The EC2 instance
 resource "aws_instance" "ruuvi_instance" {
   # Amazon Linux 2 AMI (HVM), SSD Volume Type
   ami           = "ami-09def150731bdbcc2"
   instance_type = "${var.instance_type}"
-  key_name      = "${aws_key_pair.bostrom.id}"
+  key_name      = "${aws_key_pair.ruuvi_access_key.id}"
 
   # Our Security group to allow HTTP and SSH access
   vpc_security_group_ids = ["${aws_security_group.default.id}"]
@@ -181,6 +207,21 @@ resource "aws_instance" "ruuvi_instance" {
   tags = {
     Name = "${var.project_name}"
   }
+}
+
+# We create a null_resource that doesn't do anything else than
+# provision our instance. The aws_instance also provides provisioning
+# options, but they would run before the ebs_volume is attached, so
+# we create a separate resource who's provisioning is triggered by
+# the volume attachment
+resource "null_resource" "ruuvi_provisioner" {
+  triggers {
+    volume_attachment = "${aws_volume_attachment.ruuvi_vol_att.id}"
+  }
+
+  connection {
+    host = "${aws_instance.ruuvi_instance.public_ip}"
+  }
 
   # We run a remote provisioner on the instance after creating it.
   provisioner "file" {
@@ -190,8 +231,8 @@ resource "aws_instance" "ruuvi_instance" {
       private_key = "${file(var.private_key_path)}"
     }
 
-    source      = "provisioning/install-influxdb.sh"
-    destination = "/tmp/install-influxdb.sh"
+    source      = "provisioning"
+    destination = "/tmp"
   }
 
   provisioner "remote-exec" {
@@ -202,8 +243,11 @@ resource "aws_instance" "ruuvi_instance" {
     }
 
     inline = [
-      "chmod +x /tmp/install-influxdb.sh",
-      "/tmp/install-influxdb.sh ${var.influx_admin_pw} ${var.influx_user_pw} ${var.grafana_admin_pw}",
+      "chmod +x /tmp/provisioning/*.sh",
+      "/tmp/provisioning/init-ebs.sh",
+      "/tmp/provisioning/install-influxdb.sh ${var.influx_admin_pw} ${var.influx_user_pw}",
+      "/tmp/provisioning/install-grafana.sh ${var.grafana_admin_pw} ${var.influx_user_pw}",
     ]
   }
+
 }
