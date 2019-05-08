@@ -7,5 +7,5 @@ then
 fi
 
 echo "Creating mount point and mounting volume"
-sudo mkdir /mnt/influx
+sudo mkdir -p /mnt/influx
 sudo mount /dev/xvdh /mnt/influx

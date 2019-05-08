@@ -4,7 +4,7 @@ This repository contains instructions and a Terraform project for setting up a R
 
 ## The Raspberry Pi part
 
-These are mainly notes to self on how to set up the Raspberry Pi to have all needed software and settings and the ruuvi-collector software running. My older version of the Raspberry Pi (that doesn't have wifi nor Bluetooth) requires some additional setup for my dongles to work. This might not be necessary depending on your version of the Pi.
+These are mainly notes to self on how to set up the Raspberry Pi to have all needed software and settings and the ruuvi-collector software running. My older version of the Raspberry Pi (Model B Rev 2 that doesn't have wifi nor Bluetooth) requires some additional setup for my dongles to work. This might not be necessary depending on your version of the Pi.
 
 ### Setup Raspbian
 
@@ -49,7 +49,7 @@ This wasn't enough for me, I had to setup the wifi dongle using Ethernet connect
 - `git clone https://github.com/Scrin/RuuviCollector.git`
 - `cd RuuviCollector`
 - `mvn clean package`
-- update `ruuvi-collector.properties` and `ruuvi-names.properties` (see files below, modify to match your needs)
+- Edit `ruuvi-collector.properties` and `ruuvi-names.properties`, modify to match your needs
 - `java -jar target/ruuvi-collector-0.2.jar`
 
 Hint: Run it in `screen` to keep it running when you log out.
@@ -59,9 +59,9 @@ Hint: Run it in `screen` to keep it running when you log out.
 The AWS setup is managed with Terraform. The scripts take care of everything including provisioning the Grafana datasources and dashboards.
 
 The setup includes:
-- Elastic Load Balancer accepting requests from the Internet
-- Security Groups for controlling open ports
+- Elastic Load Balancer accepting requests from the Internet over HTTPS
 - An EC2 instance running InfluxDb and Grafana
+- Security Groups for controlling open ports to ELB and EC2 instance
 - An EBS volume for persisting InfluxDb data
 - An SSL certificate for your domain, so you can access Grafana over HTTPS on your own subdomain (DNS not included)
 
@@ -88,9 +88,11 @@ The setup includes:
 
 This might hang on the SSL Certificate creation since it waits for it to become verified. To continue, add the verification records to your DNS and wait for the certificate to become verified (see below, and check the AWS console for this). Then re-run `terraform apply`.
 
+The Terraform outputs the EC2 instance's IP address (for SSH connections) and the ELB domain name where Grafana will be accessible (and InfluxDb on port 8086).
+
 ## The DNS part
 
-I'm using my own domain name configured in Namecheap, so to get the custom domain name working, I had to do this:
+I'm using my own domain name configured in Namecheap, so to get the custom domain name working, I had to do this in the Namecheap admin panel:
 
 - Add a CNAME to the DNS configuration for verifying the AWS certificate (instructions in the AWS console when Terraform has created it)
 - Add a CNAME which points to the ELB DNS name for the chosen subdomain (displayed as output from the Terraform script)
