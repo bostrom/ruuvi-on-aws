@@ -67,6 +67,8 @@ The setup includes:
 
 ### Setup
 
+- Enter aws dir
+    - `cd aws`
 - Install aws-cli
     - `brew install awscli`
 - Install terraform
@@ -81,7 +83,6 @@ The setup includes:
 - Optionally set up an [S3 backend for Terraform](https://www.terraform.io/docs/backends/types/s3.html).
     - If omitted, remove `backend.tf`
 - Run
-    - `cd aws`
     - `terraform init`
     - `terraform plan`
     - `terraform apply`
