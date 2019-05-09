@@ -55,6 +55,7 @@
       "steppedLine": false,
       "targets": [
         {
+          "alias": "$tag_name",
           "groupBy": [
             {
               "params": [
@@ -175,6 +176,7 @@
       "steppedLine": false,
       "targets": [
         {
+          "alias": "$tag_name",
           "groupBy": [
             {
               "params": [
@@ -295,6 +297,7 @@
       "steppedLine": false,
       "targets": [
         {
+          "alias": "$tag_name",
           "groupBy": [
             {
               "params": [
@@ -415,6 +418,7 @@
       "steppedLine": false,
       "targets": [
         {
+          "alias": "$tag_name",
           "groupBy": [
             {
               "params": [
