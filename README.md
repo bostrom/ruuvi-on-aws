@@ -58,6 +58,12 @@ This wasn't enough for me, I had to setup the wifi dongle using Ethernet connect
 - `sudo systemctl start ruuvi-collector.service`
 - `sudo systemctl status ruuvi-collector.service`
 
+## Backup your Raspberry SD card
+
+In case (or rather, when) the SD card dies or gets corrupted you don't need to go through the whole process above if you make an image of the SD card using [these instruction](https://medium.com/better-programming/backing-up-your-raspberry-pi-sd-card-on-mac-the-simple-way-398a630f899c).
+
+Then, when you need to re-flash your SD card just use your custom image.
+
 ## The AWS part
 
 The AWS setup is managed with Terraform. The scripts take care of everything including provisioning the Grafana datasources and dashboards.
