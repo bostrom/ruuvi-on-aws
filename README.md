@@ -44,9 +44,9 @@ This wasn't enough for me, I had to setup the wifi dongle using Ethernet connect
 - `ssh pi@raspberrypi.local`
 - `sudo apt update`
 - `sudp apt full-upgrade`
-- Note: if the linux kernel was upgraded in the above process, you might need to re-install the wifi driver with `sudo install-wifi`
+- Note: if the linux kernel was upgraded in the above process, you might need to re-install the wifi driver with `sudo install-wifi` if you had to install it manually earlier (see above)
 - `sudo apt install -y git bluez bluez-hcidump maven`
-- Install a JDK (Java Development Kit). For newer Pi's and Raspbians it might be `sudo apt install openjdk-11-jdk-headless`, for older ones, you might have to select an older JDK, e.g. `openjdk-8-jdk-headless`. If your `/etc/alternatives/java` is a different version than the JDK you're installing, then uninstall it with `sudo apt remove openjdk-11-jre-headless`.
+- Install a JDK (Java Development Kit). For newer Pi's and Raspbians it might be `sudo apt install openjdk-11-jdk-headless`. For older ones, you might have to select an older JDK, e.g. `openjdk-8-jdk-headless`. If your `/etc/alternatives/java` is a different version than the JDK you're installing, then uninstall the other JRE with `sudo apt remove openjdk-11-jre-headless` (or whatever version is installed).
 - ``sudo setcap 'cap_net_raw,cap_net_admin+eip' `which hcitool` ``
 - ``sudo setcap 'cap_net_raw,cap_net_admin+eip' `which hcidump` ``
 - `git clone https://github.com/Scrin/RuuviCollector.git`
@@ -56,8 +56,7 @@ This wasn't enough for me, I had to setup the wifi dongle using Ethernet connect
 - Create `/etc/systemd/system/ruuvi-collector.service` from [this template](raspberry-pi/ruuvi-collector.service)
 - `sudo systemctl enable ruuvi-collector.service`
 - `sudo systemctl start ruuvi-collector.service`
-
-Hint: Run it in `screen` to keep it running when you log out.
+- `sudo systemctl status ruuvi-collector.service`
 
 ## The AWS part
 
