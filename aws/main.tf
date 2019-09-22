@@ -51,7 +51,7 @@ resource "aws_security_group" "default" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0", "10.0.0.0/16"]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   # Grafana
@@ -133,25 +133,18 @@ resource "aws_elb" "ruuvi_elb" {
   instances       = ["${aws_instance.ruuvi_instance.id}"]
 
   listener {
-    instance_port      = 22
-    instance_protocol  = "tcp"
-    lb_port            = 22
-    lb_protocol        = "tcp"
-  }
-
-  listener {
-    instance_port      = 3000
-    instance_protocol  = "http"
     lb_port            = 443
     lb_protocol        = "https"
+    instance_port      = 3000
+    instance_protocol  = "http"
     ssl_certificate_id = "${aws_acm_certificate.ruuvi_cert.id}"
   }
 
   listener {
-    instance_port     = 8086
-    instance_protocol = "http"
     lb_port           = 8086
     lb_protocol       = "https"
+    instance_port     = 8086
+    instance_protocol = "http"
     ssl_certificate_id = "${aws_acm_certificate.ruuvi_cert.id}"
   }
 
